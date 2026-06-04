@@ -91,8 +91,6 @@ function renderSourceDistribution(reviews) {
         'a2is.ru': 0,
         'crmindex.ru': 0,
         'productradar.ru': 0,
-        'yandex.ru': 0,
-        '2gis.ru': 0,
         'google.com': 0
     };
 
@@ -112,22 +110,18 @@ function renderSourceDistribution(reviews) {
     sourceChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['a2is.ru', 'crmindex.ru', 'productradar.ru', 'Yandex Maps', '2GIS', 'Google Maps'],
+            labels: ['a2is.ru', 'crmindex.ru', 'productradar.ru', 'Google Maps'],
             datasets: [{
                 data: [
                     sourceCounts['a2is.ru'], 
                     sourceCounts['crmindex.ru'], 
                     sourceCounts['productradar.ru'],
-                    sourceCounts['yandex.ru'],
-                    sourceCounts['2gis.ru'],
                     sourceCounts['google.com']
                 ],
                 backgroundColor: [
                     '#3b82f6',
                     '#10b981',
                     '#8b5cf6',
-                    '#fc3f1d',
-                    '#2ca300',
                     '#4285f4'
                 ],
                 borderWidth: isDark ? 2 : 1,

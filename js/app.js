@@ -140,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         // Source count labels
-        const sourceCounts = { 'a2is.ru': 0, 'crmindex.ru': 0, 'productradar.ru': 0, 'yandex.ru': 0, '2gis.ru': 0, 'google.com': 0 };
+        const sourceCounts = { 'a2is.ru': 0, 'crmindex.ru': 0, 'productradar.ru': 0, 'google.com': 0 };
         filteredReviews.forEach(r => {
             if (sourceCounts[r.source] !== undefined) {
                 sourceCounts[r.source]++;
@@ -159,14 +159,6 @@ document.addEventListener('DOMContentLoaded', () => {
             <div class="source-breakdown-item">
                 <span class="source-breakdown-name" style="color: var(--source-productradar);">radar</span>
                 <span class="source-breakdown-val">${sourceCounts['productradar.ru']}</span>
-            </div>
-            <div class="source-breakdown-item">
-                <span class="source-breakdown-name" style="color: var(--source-yandex);">yandex</span>
-                <span class="source-breakdown-val">${sourceCounts['yandex.ru']}</span>
-            </div>
-            <div class="source-breakdown-item">
-                <span class="source-breakdown-name" style="color: var(--source-2gis);">2gis</span>
-                <span class="source-breakdown-val">${sourceCounts['2gis.ru']}</span>
             </div>
             <div class="source-breakdown-item">
                 <span class="source-breakdown-name" style="color: var(--source-google);">google</span>
@@ -303,6 +295,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn(e);
             }
 
+            const showBody = review.title || review.text;
+            const bodyHTML = showBody ? `
+                <div class="review-body">
+                    ${review.title ? `<div class="review-title">«${review.title}»</div>` : ''}
+                    ${review.text ? `<p class="review-text">${review.text}</p>` : ''}
+                </div>
+            ` : '';
+
             return `
                 <div class="review-card">
                     <div class="review-badge ${sourceClass}"></div>
@@ -322,10 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     
-                    <div class="review-body">
-                        ${review.title ? `<div class="review-title">«${review.title}»</div>` : ''}
-                        <p class="review-text">${review.text}</p>
-                    </div>
+                    ${bodyHTML}
 
                     ${aspectsHTML}
                     ${prosConsHTML}

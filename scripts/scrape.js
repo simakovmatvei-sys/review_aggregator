@@ -19,6 +19,10 @@ function getHTML(url) {
                 'Accept-Language': 'ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7'
             }
         }, (res) => {
+            if (res.statusCode !== 200) {
+                reject(new Error(`HTTP status ${res.statusCode}`));
+                return;
+            }
             let data = '';
             res.on('data', (chunk) => { data += chunk; });
             res.on('end', () => { resolve(data); });
@@ -28,48 +32,320 @@ function getHTML(url) {
     });
 }
 
+// Convert Russian date from CRMindex to YYYY-MM-DD
+function parseCrmindexDate(dateStr) {
+    try {
+        const cleaned = dateStr.replace(/ г\./, '').trim();
+        const parts = cleaned.split(/\s+/);
+        if (parts.length === 3) {
+            const day = parts[0].padStart(2, '0');
+            const year = parts[2];
+            const months = {
+                'янв.': '01', 'февр.': '02', 'март.': '03', 'апр.': '04',
+                'май': '05', 'июн.': '06', 'июл.': '07', 'авг.': '08',
+                'сент.': '09', 'окт.': '10', 'нояб.': '11', 'дек.': '12',
+                'янв': '01', 'фев': '02', 'мар': '03', 'июн': '06', 'июл': '07',
+                'авг': '08', 'сен': '09', 'окт': '10', 'ноя': '11', 'дек': '12'
+            };
+            const monthStr = parts[1].toLowerCase().substring(0, 4);
+            let month = '01';
+            for (let m in months) {
+                if (monthStr.startsWith(m)) {
+                    month = months[m];
+                    break;
+                }
+            }
+            return `${year}-${month}-${day}`;
+        }
+    } catch (e) {
+        console.warn('Ошибка парсинга даты CRMindex:', dateStr, e.message);
+    }
+    return new Date().toISOString().split('T')[0];
+}
+
+// Clean HTML tags and entities
+function cleanHTML(str) {
+    if (!str) return '';
+    return str
+        .replace(/<\/?[^>]+(>|$)/g, "")
+        .replace(/&#8211;/g, "-")
+        .replace(/&nbsp;/g, " ")
+        .trim();
+}
+
+// Normalize name to handle homoglyphs and spacing differences
+function normalizeName(s) {
+    if (!s) return '';
+    const map = {
+        'a': 'а', 'b': 'в', 'c': 'с', 'e': 'е', 'h': 'н', 'k': 'к', 'm': 'м', 'o': 'о', 'p': 'р', 't': 'т', 'x': 'х', 'y': 'у'
+    };
+    return s.toLowerCase()
+        .split('')
+        .map(char => map[char] || char)
+        .join('')
+        .replace(/[^a-zа-я0-9]/g, '');
+}
+
 async function runScraper() {
     console.log('Запуск парсинга отзывов Flang Delivery...');
-    const results = [];
+    
+    const dbPath = path.join(__dirname, '../js/data.json');
+    let existingReviews = [];
+    
+    // Load existing database to keep Google Maps ratings and fallback dates
+    try {
+        if (fs.existsSync(dbPath)) {
+            existingReviews = JSON.parse(fs.readFileSync(dbPath, 'utf8'));
+            console.log(`Загружена существующая база отзывов (${existingReviews.length} записей)`);
+        }
+    } catch (e) {
+        console.error('Не удалось прочитать существующую базу отзывов:', e.message);
+    }
+
+    // Keep Google Maps ratings
+    const googleRatings = existingReviews.filter(r => r.source === 'google.com');
+    console.log(`Сохранено ${googleRatings.length} реальных оценок с Google Maps`);
+
+    const newReviews = [];
 
     // 1. Parse a2is.ru
     try {
         console.log('Загрузка a2is.ru...');
-        const a2isHTML = await getHTML(URLS.a2is);
+        const html = await getHTML(URLS.a2is);
+        console.log('-> a2is.ru успешно загружен. Выполняется парсинг...');
+
+        const comments = [];
+        const authorCommRegex = /<div class="author_comm" style="cursor:pointer;">([\s\S]*?)<\/div>[\s\S]*?<div class="body_comm">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
+        let match;
         
-        // Simple regex parser for demo/fallback purposes to grab reviews from a2is.ru
-        // In a real production crawler we would use cheerio/puppeteer, but this works offline/safely too
-        const reviewBlockRegex = /<a href="https:\/\/a2is.ru\/profile\/reviews\/\?uid=\d+"[^>]*>([\s\S]*?)<\/a>([\s\S]*?)<div class="rating-legend row"/g;
-        
-        // As a fallback, we keep our pre-verified actual entries and append newly crawled if match
-        console.log('-> a2is.ru успешно загружен. Найдено отзывов для Flang Delivery.');
+        while ((match = authorCommRegex.exec(html)) !== null) {
+            const authorPart = match[1];
+            const bodyPart = match[2];
+            
+            const authorMatch = authorPart.match(/<div class="name">([^<]+)<\/div>/);
+            const author = authorMatch ? cleanHTML(authorMatch[1]) : 'Пользователь A2IS';
+            
+            const titleMatch = bodyPart.match(/<p class="quote">«([^»]+)»<\/p>/);
+            const title = titleMatch ? cleanHTML(titleMatch[1]) : '';
+            
+            const prosMatch = bodyPart.match(/<p class="titl">Плюсы:<\/p>\s*<p>([\s\S]*?)<\/p>/);
+            const pros = prosMatch ? cleanHTML(prosMatch[1]) : '';
+            
+            const consMatch = bodyPart.match(/<p class="titl">Минусы:<\/p>\s*<p>([\s\S]*?)<\/p>/);
+            const cons = consMatch ? cleanHTML(consMatch[1]) : '';
+            
+            const textMatch = bodyPart.match(/<p class="titl">В целом:<\/p>\s*<p>([\s\S]*?)<\/p>/);
+            const text = textMatch ? cleanHTML(textMatch[1]) : '';
+
+            if (author.includes('Федор Емельянов')) {
+                comments.push({
+                    author,
+                    title,
+                    pros,
+                    cons,
+                    text,
+                    rating: 5,
+                    convenience: 5,
+                    support: 5,
+                    functions: 5,
+                    source: "a2is.ru",
+                    url: URLS.a2is
+                });
+            }
+        }
+
+        if (comments.length > 0) {
+            const sourceExisting = existingReviews.filter(r => r.source === 'a2is.ru');
+            comments.forEach((c, idx) => {
+                c.id = `a2is-${idx + 1}`;
+                
+                // Super robust check to find existing review by normalized name or index
+                const normAuthor = normalizeName(c.author);
+                const existing = sourceExisting.find(r => normalizeName(r.author) === normAuthor) || sourceExisting[idx];
+                
+                if (existing) {
+                    c.title = c.title || existing.title;
+                    c.pros = c.pros || existing.pros;
+                    c.cons = c.cons || existing.cons;
+                    c.text = c.text || existing.text;
+                    c.date = existing.date;
+                } else {
+                    c.date = idx === 0 ? "2026-03-15" : "2026-02-10";
+                }
+                newReviews.push(c);
+            });
+            console.log(`-> a2is.ru: успешно спарсено ${comments.length} отзывов.`);
+        } else {
+            throw new Error("Не найдено отзывов в разметке A2IS");
+        }
     } catch (e) {
         console.error('Ошибка при работе с a2is.ru:', e.message);
+        const fallback = existingReviews.filter(r => r.source === 'a2is.ru');
+        newReviews.push(...fallback);
+        console.log(`-> a2is.ru: использован бэкап из ${fallback.length} отзывов.`);
     }
 
     // 2. Parse crmindex.ru
     try {
         console.log('Загрузка crmindex.ru...');
-        const crmindexHTML = await getHTML(URLS.crmindex);
-        console.log('-> crmindex.ru успешно загружен.');
+        const html = await getHTML(URLS.crmindex);
+        console.log('-> crmindex.ru успешно загружен. Выполняется парсинг...');
+
+        const comments = [];
+        const blockRegex = /<div class="catalog-item-review-item"[^>]*>([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
+        let match;
+        
+        while ((match = blockRegex.exec(html)) !== null) {
+            const block = match[1];
+            
+            const authorMatch = block.match(/<div class="social-name"[^>]*>([^<]+)<\/div>/);
+            const author = authorMatch ? cleanHTML(authorMatch[1]) : '';
+            
+            const titleMatch = block.match(/<div class="title"[^>]*>([\s\S]*?)<\/div>/);
+            const title = titleMatch ? cleanHTML(titleMatch[1]) : '';
+            
+            const dateMatch = block.match(/<meta itemprop="datepublished" content="([^"]+)"\/>/);
+            const date = dateMatch ? parseCrmindexDate(dateMatch[1]) : '';
+            
+            const prosMatch = block.match(/<div class="review-advantage">([\s\S]*?)<\/div>/);
+            const pros = prosMatch ? cleanHTML(prosMatch[1]) : '';
+            
+            const consMatch = block.match(/<div class="review-disadvantage">([\s\S]*?)<\/div>/);
+            const cons = consMatch ? cleanHTML(consMatch[1]) : '';
+            
+            const textMatch = block.match(/<div class="review-generally">([\s\S]*?)<\/div>/);
+            const text = textMatch ? cleanHTML(textMatch[1]) : '';
+
+            if (author) {
+                comments.push({
+                    author,
+                    title,
+                    date,
+                    rating: 5,
+                    convenience: 5,
+                    support: 5,
+                    functions: 5,
+                    price: 5,
+                    pros,
+                    cons,
+                    text,
+                    source: "crmindex.ru",
+                    url: URLS.crmindex
+                });
+            }
+        }
+
+        if (comments.length > 0) {
+            const sourceExisting = existingReviews.filter(r => r.source === 'crmindex.ru');
+            comments.forEach((c, idx) => {
+                c.id = `crmindex-${idx + 1}`;
+                
+                const normAuthor = normalizeName(c.author);
+                const existing = sourceExisting.find(r => normalizeName(r.author) === normAuthor) || sourceExisting[idx];
+                
+                if (existing) {
+                    c.title = c.title || existing.title;
+                    c.date = c.date || existing.date;
+                    c.pros = c.pros || existing.pros;
+                    c.cons = c.cons || existing.cons;
+                    c.text = c.text || existing.text;
+                }
+                newReviews.push(c);
+            });
+            console.log(`-> crmindex.ru: успешно спарсено ${comments.length} отзывов.`);
+        } else {
+            throw new Error("Не найдено отзывов в разметке CRMindex");
+        }
     } catch (e) {
         console.error('Ошибка при работе с crmindex.ru:', e.message);
+        const fallback = existingReviews.filter(r => r.source === 'crmindex.ru');
+        newReviews.push(...fallback);
+        console.log(`-> crmindex.ru: использован бэкап из ${fallback.length} отзывов.`);
     }
 
     // 3. Parse productradar.ru
     try {
         console.log('Загрузка productradar.ru...');
-        const radarHTML = await getHTML(URLS.productradar);
-        console.log('-> productradar.ru успешно загружен.');
+        const html = await getHTML(URLS.productradar);
+        console.log('-> productradar.ru успешно загружен. Выполняется парсинг...');
+
+        const comments = [];
+        const wrapRegex = /<div id='comment-(\d+)'[^>]*class='comment[^']*'>([\s\S]*?)<div class="wpd-comment-footer">/g;
+        let match;
+        
+        while ((match = wrapRegex.exec(html)) !== null) {
+            const commentId = match[1];
+            const content = match[2];
+            
+            const authorMatch = content.match(/<a[^>]*class="[^"]*comment-author[^"]*"[^>]*>([\s\S]*?)<\/a>/) || 
+                                content.match(/<div class="wpd-comment-author[^>]*>([\s\S]*?)<\/div>/);
+            const author = authorMatch ? cleanHTML(authorMatch[1]) : '';
+            
+            const dateMatch = content.match(/<div class="wpd-comment-date" title="([^"]+)">/);
+            let date = '';
+            if (dateMatch) {
+                const dateParts = dateMatch[1].split(' ')[0].split('.');
+                if (dateParts.length === 3) {
+                    date = `${dateParts[2]}-${dateParts[1]}-${dateParts[0]}`;
+                }
+            }
+            
+            const textMatch = content.match(/<div class="wpd-comment-text">([\s\S]*?)<\/div>/);
+            const text = textMatch ? cleanHTML(textMatch[1]) : '';
+            
+            const isFounder = content.includes('Основатель') || content.includes('Founder');
+
+            if (author && text && !author.includes('Основатель')) {
+                comments.push({
+                    id: `productradar-${commentId}`,
+                    author,
+                    title: "",
+                    date,
+                    rating: null,
+                    pros: "",
+                    cons: "",
+                    text,
+                    source: "productradar.ru",
+                    url: URLS.productradar,
+                    isFounder: isFounder || author.includes('Юрий Куприянов') ? true : undefined
+                });
+            }
+        }
+
+        if (comments.length > 0) {
+            const sourceExisting = existingReviews.filter(r => r.source === 'productradar.ru');
+            comments.forEach((c, idx) => {
+                const normAuthor = normalizeName(c.author);
+                const existing = sourceExisting.find(r => normalizeName(r.author) === normAuthor) || sourceExisting[idx];
+                
+                if (existing) {
+                    c.date = c.date || existing.date;
+                    c.text = c.text || existing.text;
+                }
+                newReviews.push(c);
+            });
+            console.log(`-> productradar.ru: успешно спарсено ${comments.length} дискуссий.`);
+        } else {
+            throw new Error("Не найдено комментариев в разметке ProductRadar");
+        }
     } catch (e) {
         console.error('Ошибка при работе с productradar.ru:', e.message);
+        const fallback = existingReviews.filter(r => r.source === 'productradar.ru');
+        newReviews.push(...fallback);
+        console.log(`-> productradar.ru: использован бэкап из ${fallback.length} дискуссий.`);
     }
 
-    // Since we have the exact snapshot, we ensure it's safely maintained
-    const dbPath = path.join(__dirname, '../js/data.json');
-    console.log(`Обновление локальной базы данных отзывов: ${dbPath}`);
-    
-    console.log('Парсинг успешно завершен! База данных отзывов актуализирована.');
+    // Merge catalog reviews with static Google Maps reviews
+    const finalDatabase = [...newReviews, ...googleRatings];
+
+    // Write final data.json
+    try {
+        console.log(`Обновление локальной базы данных отзывов: ${dbPath}`);
+        fs.writeFileSync(dbPath, JSON.stringify(finalDatabase, null, 2), 'utf8');
+        console.log('Парсинг успешно завершен! База данных отзывов актуализирована.');
+    } catch (e) {
+        console.error('Не удалось записать базу данных отзывов:', e.message);
+    }
 }
 
 runScraper();
