@@ -1,5 +1,20 @@
 [
   {
+    "author": "Алексей Морозов",
+    "title": "Удобно",
+    "pros": "Хорошее решение для организации собственной доставки. Интерфейс понятный, процессы автоматизированы.",
+    "cons": "Иногда появляются мелкие вопросы по настройкам, зато в остальном сервис закрывает все основные задачи.",
+    "text": "Все хорошо",
+    "rating": 5,
+    "convenience": 5,
+    "support": 5,
+    "functions": 5,
+    "source": "a2is.ru",
+    "url": "https://a2is.ru/catalog/programmy-dlya-kurerskikh-sluzhb/flang-delivery?utm_from=search",
+    "id": "a2is-1",
+    "date": "2026-03-15"
+  },
+  {
     "author": "Екатерина Рыдлева",
     "title": "Закрыли всю доставку букетов по городу, перестали терять заказы",
     "pros": "У нас часто заказывают букет к определенному времени, сюрприз на работу или к концерту например, и тут важно не опоздать ни на час. В системе ставим окно доставки и курьер его видит, стало гораздо меньше косяков со временем. Маршрут на день собирается сам, раньше диспетчер вручную раскидывал по карте кто куда. Курьеров видно где едут, можно клиенту сразу сказать когда ждать. Еще удобно что курьер прикладывает фото что букет вручили, пару раз это спасло когда получатель потом говорил мол ничего не приходило.",
@@ -11,7 +26,7 @@
     "functions": 5,
     "source": "a2is.ru",
     "url": "https://a2is.ru/catalog/programmy-dlya-kurerskikh-sluzhb/flang-delivery?utm_from=search",
-    "id": "a2is-1",
+    "id": "a2is-2",
     "date": "2026-03-15"
   },
   {
@@ -26,7 +41,7 @@
     "functions": 5,
     "source": "a2is.ru",
     "url": "https://a2is.ru/catalog/programmy-dlya-kurerskikh-sluzhb/flang-delivery?utm_from=search",
-    "id": "a2is-2",
+    "id": "a2is-3",
     "date": "2026-03-15"
   },
   {
@@ -41,7 +56,7 @@
     "functions": 5,
     "source": "a2is.ru",
     "url": "https://a2is.ru/catalog/programmy-dlya-kurerskikh-sluzhb/flang-delivery?utm_from=search",
-    "id": "a2is-3",
+    "id": "a2is-4",
     "date": "2026-03-15"
   },
   {
